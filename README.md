@@ -1,4 +1,26 @@
-# phx-bootstrap — README
+# phx-bootstrap
+
+This tool automates the bootstrapping of new Phoenix projects by running mix phx.new, updating dependencies, and applying a set of pre-defined customizations.
+
+With Phoenix 1.8, the framework has become intentionally minimal. While the core architecture is excellent, some essentials (like dialogs, common UI components, or even simple daisyUI integration) are no longer included.
+
+I built this CLI because I don’t want to reinvent or copy-paste the same solutions into every project — things like modals, daisyUI components, or opinionated defaults should be one-command away.
+
+### Why this matters
+
+Phoenix 1.8 is leaner by design. That’s good for flexibility, but in practice, it often means every new project requires repetitive setup:
+
+ * Re-adding dialogs/modals.
+
+ * Wiring up DaisyUI.
+
+ * Extending core_components.ex.
+
+ * Adjusting JS pipeline.
+
+ * Adding missing conveniences in auth.
+
+This CLI automates all of that. It lets you start with a ready-to-use Phoenix + DaisyUI + your own conventions — instead of copy-pasting from your last project.
 
 ## Quick start
 
