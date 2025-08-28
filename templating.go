@@ -49,21 +49,30 @@ func NewEmbeddedTemplateEngine() *EmbeddedTemplateEngine {
 	}
 }
 
+// minimal logger
+func logf(format string, args ...any) { fmt.Fprintf(os.Stderr, "[tpl] "+format+"\n", args...) }
+
 func (e *EmbeddedTemplateEngine) Render(name string, data any) (string, error) {
 	loc := path.Join(e.Base, name)
-	t := template.New(name)
-	if e.Funcs != nil {
-		t = t.Funcs(e.Funcs)
-	}
-	parsed, err := t.ParseFS(e.FS, loc)
+
+	b, err := fs.ReadFile(e.FS, loc)
 	if err != nil {
 		return "", fmt.Errorf("template not embedded: %s (%w)", loc, err)
 	}
-	var buf bytes.Buffer
-	if err := parsed.Execute(&buf, data); err != nil {
-		return "", err
+
+	// Try Go template first; fall back to raw if parsing/executing fails
+	root := "tpl"
+	t := template.New(root)
+	if e.Funcs != nil {
+		t = t.Funcs(e.Funcs)
 	}
-	return buf.String(), nil
+	if _, err := t.Parse(string(b)); err == nil {
+		var buf bytes.Buffer
+		if err := t.Execute(&buf, data); err == nil {
+			return buf.String(), nil
+		}
+	}
+	return string(b), nil
 }
 
 func (e *EmbeddedTemplateEngine) CreateFileFromTemplate(dstPath, tplName string, data any, overwrite bool) error {
@@ -77,7 +86,22 @@ func (e *EmbeddedTemplateEngine) CreateFileFromTemplate(dstPath, tplName string,
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dstPath, []byte(out), 0o644)
+
+	f, err := os.Create(dstPath) // explicit create/truncate
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(out); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	abs, _ := filepath.Abs(dstPath)
+	logf("write %dB -> %s", len(out), abs)
+	return nil
 }
 
 func (e *EmbeddedTemplateEngine) AppendTemplateToFile(dstPath, tplName string, data any) error {
@@ -92,9 +116,17 @@ func (e *EmbeddedTemplateEngine) AppendTemplateToFile(dstPath, tplName string, d
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.WriteString(out)
-	return err
+	if _, err := f.WriteString(out); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	abs, _ := filepath.Abs(dstPath)
+	logf("append %dB -> %s", len(out), abs)
+	return nil
 }
 
 func (e *EmbeddedTemplateEngine) InsertTemplateBeforeModuleEnd(dstPath, fullModule, tplName string, data any) error {
@@ -102,7 +134,12 @@ func (e *EmbeddedTemplateEngine) InsertTemplateBeforeModuleEnd(dstPath, fullModu
 	if err != nil {
 		return err
 	}
-	return insertBeforeModuleEnd(dstPath, fullModule, "\n"+out+"\n")
+	if err := insertBeforeModuleEnd(dstPath, fullModule, "\n"+out+"\n"); err != nil {
+		return err
+	}
+	abs, _ := filepath.Abs(dstPath)
+	logf("insert %dB into %s (%s)", len(out), abs, fullModule)
+	return nil
 }
 
 func (e *EmbeddedTemplateEngine) List() ([]string, error) {
@@ -131,14 +168,14 @@ func insertBeforeModuleEnd(path string, fullModule string, content string) error
 
 	header := "defmodule " + fullModule + " do"
 	if !strings.Contains(s, header) {
-		fmt.Printf("! warning: module header not found (%s). Appending.\n", fullModule)
+		// header not found; append at end
 		return appendRaw(path, "\n"+content)
 	}
 
 	trimmed := strings.TrimRight(s, " \t\r\n")
 	last := strings.LastIndex(trimmed, "\nend")
 	if last == -1 {
-		fmt.Println("! warning: final 'end' not found. Appending.")
+		// no final end; append
 		return appendRaw(path, "\n"+content)
 	}
 

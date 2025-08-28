@@ -121,26 +121,42 @@ func runAction(ctx context.Context, exec Runner, t TemplateEngine, td *TemplateD
 		sh, shArgs := systemShell()
 		all := append(shArgs, script)
 		return exec.Run(ctx, dir, sh, all...)
-
-	case "overwrite", "create":
+	case "overwrite":
 		dest, err := applyMiniTemplate(a.Dest, *td)
 		if err != nil {
 			return err
 		}
-		if err := t.CreateFileFromTemplate(filepath.Join(td.ProjectAbsDir, dest), a.Template, *td, true /*overwrite*/); err != nil {
+		full, err := resolveProjectPath(td, dest)
+		if err != nil {
 			return err
 		}
-		return nil
+		fmt.Printf("→ overwrite %s from template %s\n", full, a.Template)
+		return t.CreateFileFromTemplate(full, a.Template, *td, true)
+
+	case "create":
+		dest, err := applyMiniTemplate(a.Dest, *td)
+		if err != nil {
+			return err
+		}
+		full, err := resolveProjectPath(td, dest)
+		if err != nil {
+			return err
+		}
+		ow := a.Overwrite // default false unless set in manifest
+		fmt.Printf("→ create %s (overwrite=%v) from template %s\n", full, ow, a.Template)
+		return t.CreateFileFromTemplate(full, a.Template, *td, ow)
 
 	case "append":
 		dest, err := applyMiniTemplate(a.Dest, *td)
 		if err != nil {
 			return err
 		}
-		if err := t.AppendTemplateToFile(filepath.Join(td.ProjectAbsDir, dest), a.Template, *td); err != nil {
+		full, err := resolveProjectPath(td, dest)
+		if err != nil {
 			return err
 		}
-		return nil
+		fmt.Printf("→ append %s from template %s\n", full, a.Template)
+		return t.AppendTemplateToFile(full, a.Template, *td)
 
 	case "insert":
 		dest, err := applyMiniTemplate(a.Dest, *td)
@@ -151,10 +167,12 @@ func runAction(ctx context.Context, exec Runner, t TemplateEngine, td *TemplateD
 		if err != nil {
 			return err
 		}
-		if err := t.InsertTemplateBeforeModuleEnd(filepath.Join(td.ProjectAbsDir, dest), mod, a.Template, *td); err != nil {
+		full, err := resolveProjectPath(td, dest)
+		if err != nil {
 			return err
 		}
-		return nil
+		fmt.Printf("→ insert into %s (module %s) from template %s\n", full, mod, a.Template)
+		return t.InsertTemplateBeforeModuleEnd(full, mod, a.Template, *td)
 
 	default:
 		return fmt.Errorf("unknown action type: %q", a.Type)
@@ -186,4 +204,44 @@ func systemShell() (string, []string) {
 	}
 	// POSIX
 	return "sh", []string{"-lc"}
+}
+
+// ensure the project dir exists & is set
+func ensureProjectDir(td *TemplateData) error {
+	if strings.TrimSpace(td.ProjectAbsDir) == "" {
+		return fmt.Errorf("ProjectAbsDir is empty. Add a 'resolve_project_dir' action before file operations")
+	}
+	info, err := os.Stat(td.ProjectAbsDir)
+	if err != nil {
+		return fmt.Errorf("project dir not found: %s (%w)", td.ProjectAbsDir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("project dir is not a directory: %s", td.ProjectAbsDir)
+	}
+	return nil
+}
+
+// join <project>/ + dest (relative), prevent abs paths & traversal
+func resolveProjectPath(td *TemplateData, dest string) (string, error) {
+	if err := ensureProjectDir(td); err != nil {
+		return "", err
+	}
+	dest = filepath.FromSlash(strings.TrimSpace(dest))
+	if dest == "" {
+		return "", fmt.Errorf("empty dest")
+	}
+	if filepath.IsAbs(dest) {
+		return "", fmt.Errorf("dest must be relative to project dir: %s", dest)
+	}
+	full := filepath.Clean(filepath.Join(td.ProjectAbsDir, dest))
+
+	// forbid escaping the project directory
+	rel, err := filepath.Rel(td.ProjectAbsDir, full)
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(rel, "..") || rel == "." {
+		return "", fmt.Errorf("dest escapes project dir: %s -> %s", dest, full)
+	}
+	return full, nil
 }

@@ -32,6 +32,11 @@
       "template": "assets_js_app.js.tpl",
       "dest": "assets/js/app.js",
       "overwrite": true
+    },
+    {
+      "type": "create",
+      "template": "assets_vendor_dialog.js.tpl",
+      "dest": "assets/vendor/dialog.js"
     }
   ]
 }
