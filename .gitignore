@@ -27,6 +27,7 @@ go.work.sum
 # env file
 .env
 
+phx-bootstrap
 # Editor/IDE
 # .idea/
 # .vscode/
