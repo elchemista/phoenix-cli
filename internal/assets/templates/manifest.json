@@ -1,0 +1,42 @@
+{
+  "actions": [
+    {
+      "type": "run",
+      "name": "mix",
+      "args": [
+        "phx.new",
+        "{{ .ProjectName }}",
+        "--app",
+        "{{ .AppName }}",
+        "--no-install"
+      ],
+      "dir": "."
+    },
+    {
+      "type": "resolve_project_dir"
+    },
+    {
+      "type": "run",
+      "name": "mix",
+      "args": ["deps.update", "--all"],
+      "dir": "{{ .ProjectAbsDir }}"
+    },
+    {
+      "type": "insert",
+      "template": "core_components_append.ex.tpl",
+      "dest": "lib/{{ .AppName }}_web/components/core_components.ex",
+      "module": "{{ .AppModuleWeb }}.CoreComponents"
+    },
+    {
+      "type": "overwrite",
+      "template": "assets_js_app.js.tpl",
+      "dest": "assets/js/app.js",
+      "overwrite": true
+    },
+    {
+      "type": "create",
+      "template": "assets_vendor_dialog.js.tpl",
+      "dest": "assets/vendor/dialog.js"
+    }
+  ]
+}

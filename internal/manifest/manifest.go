@@ -1,4 +1,4 @@
-package main
+package manifest
 
 import (
 	"context"
@@ -11,6 +11,9 @@ import (
 	"runtime"
 	"strings"
 	"text/template"
+
+	"github.com/elchemista/phoenix-cli/internal/assets"
+	"github.com/elchemista/phoenix-cli/internal/templates"
 )
 
 type Runner interface {
@@ -35,33 +38,30 @@ type Manifest struct {
 
 type Action struct {
 	// Common:
-	Type string `json:"type"` // "run" | "shell" | "overwrite" | "append" | "insert" | "resolve_project_dir"
+	Type string `json:"type"` // "run" | "shell" | "overwrite" | "create" | "append" | "insert" | "resolve_project_dir"
 
 	// For "run" (generic executable, e.g. "mix"):
-	Name string   `json:"name,omitempty"` // e.g. "mix"
-	Args []string `json:"args,omitempty"` // e.g. ["phx.new", "{{ .ProjectName }}", "--app", "{{ .AppName }}", "--no-install"]
+	Name string   `json:"name,omitempty"`
+	Args []string `json:"args,omitempty"`
 
 	// For "shell":
-	Script string `json:"script,omitempty"` // e.g. "cd lib/{{ .AppName }}_web && mkdir ciao"
+	Script string `json:"script,omitempty"`
 
 	// Optional working dir for run/shell (templated):
-	Dir string `json:"dir,omitempty"` // e.g. "{{ .ProjectAbsDir }}"
+	Dir string `json:"dir,omitempty"`
 
 	// For template file ops:
-	Template  string `json:"template,omitempty"`  // template file name under templates/
-	Dest      string `json:"dest,omitempty"`      // destination path (templated)
-	Module    string `json:"module,omitempty"`    // for "insert" (templated)
-	Overwrite bool   `json:"overwrite,omitempty"` // for "overwrite" (defaults true in our flow)
+	Template  string `json:"template,omitempty"`
+	Dest      string `json:"dest,omitempty"`
+	Module    string `json:"module,omitempty"`
+	Overwrite bool   `json:"overwrite,omitempty"` // used by "create"
 }
 
-func ExecuteManifest(ctx context.Context, exec Runner, t TemplateEngine, td *TemplateData) error {
-	ete, ok := t.(*EmbeddedTemplateEngine)
-	if !ok {
-		return fmt.Errorf("unexpected template engine type: need EmbeddedTemplateEngine")
-	}
-
+func ExecuteManifest(ctx context.Context, exec Runner, t templates.TemplateEngine, td *templates.TemplateData) error {
 	const manifestPath = "templates/manifest.json"
-	b, err := fs.ReadFile(ete.FS, manifestPath)
+
+	// Read from the embedded assets FS explicitly.
+	b, err := fs.ReadFile(assets.Templates, manifestPath)
 	if err != nil {
 		return fmt.Errorf("manifest missing: %s (%w)", manifestPath, err)
 	}
@@ -79,7 +79,7 @@ func ExecuteManifest(ctx context.Context, exec Runner, t TemplateEngine, td *Tem
 	return nil
 }
 
-func runAction(ctx context.Context, exec Runner, t TemplateEngine, td *TemplateData, a Action) error {
+func runAction(ctx context.Context, exec Runner, t templates.TemplateEngine, td *templates.TemplateData, a Action) error {
 	switch strings.ToLower(a.Type) {
 
 	case "resolve_project_dir":
@@ -121,6 +121,7 @@ func runAction(ctx context.Context, exec Runner, t TemplateEngine, td *TemplateD
 		sh, shArgs := systemShell()
 		all := append(shArgs, script)
 		return exec.Run(ctx, dir, sh, all...)
+
 	case "overwrite":
 		dest, err := applyMiniTemplate(a.Dest, *td)
 		if err != nil {
@@ -179,7 +180,7 @@ func runAction(ctx context.Context, exec Runner, t TemplateEngine, td *TemplateD
 	}
 }
 
-func applyMiniTemplate(s string, td TemplateData) (string, error) {
+func applyMiniTemplate(s string, td templates.TemplateData) (string, error) {
 	tpl, err := template.New("inline").Parse(s)
 	if err != nil {
 		return "", err
@@ -202,12 +203,11 @@ func systemShell() (string, []string) {
 	if runtime.GOOS == "windows" {
 		return "cmd", []string{"/C"}
 	}
-	// POSIX
 	return "sh", []string{"-lc"}
 }
 
 // ensure the project dir exists & is set
-func ensureProjectDir(td *TemplateData) error {
+func ensureProjectDir(td *templates.TemplateData) error {
 	if strings.TrimSpace(td.ProjectAbsDir) == "" {
 		return fmt.Errorf("ProjectAbsDir is empty. Add a 'resolve_project_dir' action before file operations")
 	}
@@ -222,7 +222,7 @@ func ensureProjectDir(td *TemplateData) error {
 }
 
 // join <project>/ + dest (relative), prevent abs paths & traversal
-func resolveProjectPath(td *TemplateData, dest string) (string, error) {
+func resolveProjectPath(td *templates.TemplateData, dest string) (string, error) {
 	if err := ensureProjectDir(td); err != nil {
 		return "", err
 	}
@@ -235,7 +235,6 @@ func resolveProjectPath(td *TemplateData, dest string) (string, error) {
 	}
 	full := filepath.Clean(filepath.Join(td.ProjectAbsDir, dest))
 
-	// forbid escaping the project directory
 	rel, err := filepath.Rel(td.ProjectAbsDir, full)
 	if err != nil {
 		return "", err

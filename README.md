@@ -1,4 +1,4 @@
-# phx-bootstrap
+# phoenix-cli
 
 This tool automates the bootstrapping of new Phoenix projects by running mix phx.new, updating dependencies, and applying a set of pre-defined customizations.
 
@@ -29,13 +29,13 @@ This CLI automates all of that. It lets you start with a ready-to-use Phoenix + 
 3. Build and run:
 
    ```bash
-   go build -o phx-bootstrap .
-   ./phx-bootstrap -name consulente -app consulente
+   go build -o phoenix-cli ./cmd/phoenix-cli
+   ./phoenix-cli -name test -app test
    ```
 4. (Optional) See what templates are embedded:
 
    ```bash
-   ./phx-bootstrap -list-templates
+   ./phoenix-cli -list-templates
    ```
 
 ---

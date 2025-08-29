@@ -22,7 +22,7 @@ profile.cov
 
 # Go workspace file
 go.work
-go.work.sum
+go.work.sumphx-bootstrap
 
 # env file
 .env

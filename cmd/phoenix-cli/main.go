@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/elchemista/phoenix-cli/internal/app"
+	"github.com/elchemista/phoenix-cli/internal/flow"
+	"github.com/elchemista/phoenix-cli/internal/templates"
 )
 
 var (
@@ -19,9 +23,10 @@ var (
 func main() {
 	flag.Parse()
 
-	tpl := NewEmbeddedTemplateEngine()
+	a := app.New() // wires: template engine + system runner
+
 	if *flagListTpls {
-		names, err := tpl.List()
+		names, err := a.Templates.List()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "template list error:", err)
 			os.Exit(1)
@@ -33,27 +38,27 @@ func main() {
 	}
 
 	if *flagName == "" || *flagApp == "" {
-		fmt.Fprintln(os.Stderr, "Usage: ./phx-bootstrap -name <dir> -app <app>")
+		fmt.Fprintln(os.Stderr, "Usage: phoenix-cli -name <dir> -app <app>")
 		os.Exit(2)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *flagTimeout)
 	defer cancel()
 
-	td := &TemplateData{
+	td := &templates.TemplateData{
 		AppName:      *flagApp,
-		AppModule:    toModule(*flagApp),
-		AppModuleWeb: toModule(*flagApp) + "Web",
+		AppModule:    templates.ToModule(*flagApp),
+		AppModuleWeb: templates.ToModule(*flagApp) + "Web",
 		ProjectName:  *flagName,
 		// ProjectAbsDir is set later by the manifest via "resolve_project_dir"
 	}
 
-	flow := NewManifestFlow(ManifestFlowConfig{
-		Templates: tpl,
-		Exec:      SystemRunner{},
+	f := flow.NewManifestFlow(flow.ManifestFlowConfig{
+		Templates: a.Templates,
+		Exec:      a.Exec,
 	})
 
-	if err := flow.Run(ctx, td); err != nil {
+	if err := f.Run(ctx, td); err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		os.Exit(1)
 	}
